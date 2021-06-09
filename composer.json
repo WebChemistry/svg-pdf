@@ -1,0 +1,13 @@
+{
+    "name": "webchemistry/svg-pdf",
+    "description": "Simple svg to pdf converter.",
+    "require": {
+        "php": ">=8.0",
+        "setasign/fpdf": "^1.8"
+    },
+    "autoload": {
+        "psr-4": {
+            "WebChemistry\\SvgPdf\\": "src"
+        }
+    }
+}
