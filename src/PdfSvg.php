@@ -20,12 +20,6 @@ final class PdfSvg
 
 	private ?string $imagePath = null;
 
-	public function __construct(
-		private string $content,
-	)
-	{
-	}
-
 	public function enableGreyscale(): self
 	{
 		$this->greyscale = true;
@@ -46,17 +40,14 @@ final class PdfSvg
 		return $this;
 	}
 
-	public function toPdf(): Pdf
+	public function toPdf(string $content): Pdf
 	{
-		$document = simplexml_load_string($this->purgeXml());
+		$document = simplexml_load_string($this->purgeXml($content));
 		$this->pdf = $pdf = new Pdf($this->fonts[array_key_first($this->fonts)][0]);
 		$pdf->setGreyscale($this->greyscale);
 		foreach ($this->fonts as $font) {
 			$pdf->addFont(...$font);
 		}
-
-		$pdf->getSource()->SetAutoPageBreak(true);
-		$pdf->getSource()->AddPage('P', 'A4');
 
 		$this->scale = $this->attrInt($document, 'width', required: true) / $this->pdf->getSource()->GetPageWidth();
 		foreach ($document as $element) {
@@ -192,10 +183,10 @@ final class PdfSvg
 		return isset($this->scale) ? (int) round($value / $this->scale) : (int) $value;
 	}
 
-	private function purgeXml(): string
+	private function purgeXml(string $content): string
 	{
 		// remove comments
-		$content = preg_replace('#<!--(.*?)-->#', '', $this->content);
+		$content = preg_replace('#<!--(.*?)-->#', '', $content);
 
 		// remove <style>
 		$content = preg_replace('#<style>(.*?)</style>#s', '', $content);

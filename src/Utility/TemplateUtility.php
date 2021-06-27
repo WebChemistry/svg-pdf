@@ -2,11 +2,22 @@
 
 namespace WebChemistry\SvgPdf\Utility;
 
+use Contributte\Invoice\Data\IOrder;
 use WebChemistry\SvgPdf\Pdf\Color;
 
-final class SvgHelper
+final class TemplateUtility
 {
 
+	public static function createMoneyFormatter(IOrder $order): callable
+	{
+		return fn (?string $money) => $money ? $order->getCurrency()->toString($money) : '';
+	}
+
+	public static function escape(mixed $string): string
+	{
+		return $string ? htmlspecialchars((string) $string, ENT_QUOTES) : (string) $string;
+	}
+	
 	public static function multiplier(int $base, int $multiplyBy, bool $auto = true): object
 	{
 		return new class($base, $multiplyBy, $auto) {

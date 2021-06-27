@@ -15,13 +15,29 @@ final class Pdf
 
 	private bool $greyscale = false;
 
+	private float $limitHeight;
+
+	private float $adjustHeight;
+
 	public function __construct(
 		private string $defaultFontFamily,
 		?Color $defaultTextColor = null,
+		private bool $autoBreak = true,
 	)
 	{
 		$this->pdf = new PdfDecorator('P', 'pt', 'A4');
+		$this->pdf->AddPage('P', 'A4');
+		$this->pdf->SetAutoPageBreak(false);
+
 		$this->defaultTextColor = $defaultTextColor ?? Color::black();
+
+		$this->updateLimitHeight();
+	}
+
+	private function updateLimitHeight(): void
+	{
+		$this->adjustHeight = $this->limitHeight ?? 0;
+		$this->limitHeight = $this->pdf->PageNo() * ($this->pdf->GetPageHeight() - $this->pdf->getTopMargin());
 	}
 
 	public function getSource(): FPDF
@@ -47,6 +63,8 @@ final class Pdf
 
 	public function rect(float $x, float $y, float $width, float $height, ?Color $stroke = null, ?Color $fill = null): void
 	{
+		$y = $this->adjustY($y);
+		
 		if ($this->greyscale) {
 			$stroke = $stroke?->greyscale();
 			$fill = $fill?->greyscale();
@@ -71,6 +89,8 @@ final class Pdf
 
 	public function image(string $file, float $x, float $y, float $width, float $height): void
 	{
+		$y = $this->adjustY($y);
+
 		$this->pdf->Image($file, $x, $y, $width, $height);
 	}
 
@@ -88,8 +108,11 @@ final class Pdf
 		int $border = 0,
 	): void
 	{
+		$text = iconv('utf-8', 'cp1250//translit', $text);
 		$color ??= $this->defaultTextColor;
 		$fontFamily ??= $this->defaultFontFamily;
+
+		$y = $this->adjustY($y);
 
 		if ($this->greyscale) {
 			$color = $color?->greyscale();
@@ -126,7 +149,12 @@ final class Pdf
 	public function sendBrowser(): void
 	{
 		header('Content-Type: application/pdf');
-		echo $this->pdf->Output('S');
+		echo $this->pdf->Output('S', isUTF8: true);
+	}
+
+	public function toString(): string
+	{
+		return $this->pdf->Output('S', isUTF8: true);
 	}
 
 	public function setGreyscale(bool $greyscale): self
@@ -134,6 +162,21 @@ final class Pdf
 		$this->greyscale = $greyscale;
 
 		return $this;
+	}
+
+	private function adjustY(float $y): ?float
+	{
+		if ($y > $this->limitHeight) {
+			$this->pdf->AddPage('P', 'A4');
+
+			$this->updateLimitHeight();
+		}
+
+		if ($this->pdf->PageNo() > 1) {
+			$y = $y - $this->adjustHeight;
+		}
+
+		return $y;
 	}
 
 }

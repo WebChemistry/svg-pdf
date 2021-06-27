@@ -12,4 +12,9 @@ final class PdfDecorator extends FPDF
 		$this->fontpath = $path;
 	}
 
+	public function getTopMargin(): float
+	{
+		return $this->tMargin;
+	}
+
 }
