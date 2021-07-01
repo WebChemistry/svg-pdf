@@ -95,7 +95,7 @@ final class Color
 
 	public function __toString(): string
 	{
-		return '#' . dechex($this->red) . dechex($this->green) . dechex($this->blue);
+		return sprintf('#%02x%02x%02x', $this->red, $this->green, $this->blue);
 	}
 
 }
