@@ -140,7 +140,7 @@ final class Pdf
 	{
 		$y = $this->adjustY($y);
 
-		$this->pdf->Image($file, $x, $y, $width, $height);
+		$this->pdf->Image($file, $this->scale($x), $this->scale($y), $this->scale($width), $this->scale($height));
 	}
 
 	public function textWidth(
@@ -151,7 +151,6 @@ final class Pdf
 	): float
 	{
 		$fontSize = $this->scale($fontSize);
-		$color ??= $this->defaultTextColor;
 		$fontFamily ??= $this->defaultFontFamily;
 
 		$this->pdf->SetFont($fontFamily, $fontStyle, $fontSize);

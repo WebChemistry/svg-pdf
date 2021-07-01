@@ -4,17 +4,18 @@ namespace WebChemistry\SvgPdf;
 
 use LogicException;
 use SimpleXMLElement;
-use WebChemistry\SvgPdf\Pdf\Color;
+use WebChemistry\SvgPdf\Element\ElementCollection;
+use WebChemistry\SvgPdf\Element\ImageElement;
+use WebChemistry\SvgPdf\Element\PolygonElement;
+use WebChemistry\SvgPdf\Element\RectElement;
+use WebChemistry\SvgPdf\Element\TextElement;
 use WebChemistry\SvgPdf\Pdf\Pdf;
+use WebChemistry\SvgPdf\Utility\XmlUtility;
 
 final class PdfSvg
 {
 
 	private array $fonts = [];
-
-	private float $scale;
-
-	private Pdf $pdf;
 
 	private bool $greyscale = false;
 
@@ -40,159 +41,93 @@ final class PdfSvg
 		return $this;
 	}
 
-	public function toPdf(string $content): Pdf
+	public function createElementCollectionFromString(string $content): ElementCollection
 	{
-		$document = simplexml_load_string($this->purgeXml($content));
-		$this->pdf = $pdf = new Pdf($this->fonts[array_key_first($this->fonts)][0]);
-		$pdf->setGreyscale($this->greyscale);
-		foreach ($this->fonts as $font) {
-			$pdf->addFont(...$font);
+		$document = simplexml_load_string(XmlUtility::purgeXml($content));
+
+		return $this->createElementCollectionFromDocument($document);
+	}
+
+	protected function createElementCollectionFromDocument(SimpleXMLElement $document): ElementCollection
+	{
+		$collection = new ElementCollection($document);
+
+		foreach ($document->children() as $element) {
+			$name = strtolower($element->getName());
+
+			$object = match($name) {
+				'text' => $this->createElementText($element),
+				'rect' => $this->createElementRect($element),
+				'polygon' => $this->createElementPolygon($element),
+				'image' => $this->createElementImage($element),
+				'switch' => $this->createElementCollectionFromDocument($element),
+				default => throw new LogicException(sprintf('Element %s not currently supported.', $name))
+			};
+
+			$collection->add($object);
 		}
 
-		$this->scale = $this->attrInt($document, 'width', required: true) / $this->pdf->getSource()->GetPageWidth();
-		foreach ($document as $element) {
-			$method = 'element' . ucfirst($element->getName());
-			if (!method_exists($this, $method)) {
-				throw new LogicException('Method no exists');
-			}
+		return $collection;
+	}
 
-			$this->$method($element);
+	public function renderFromString(string $content): Pdf
+	{
+		$document = simplexml_load_string(XmlUtility::purgeXml($content));
+
+		return $this->renderFromElementCollection($this->createElementCollectionFromDocument($document));
+	}
+
+	public function renderFromElementCollection(ElementCollection $collection): Pdf
+	{
+		$pdf = $this->createRenderer(XmlUtility::attrInt($collection->getDocument(), 'width', required: true));
+		foreach ($collection->getElements() as $element) {
+			$element->render($pdf);
 		}
 
 		return $pdf;
 	}
 
-	protected function elementImage(SimpleXMLElement $element): void
+	public function createRenderer(int|float $documentWidth): Pdf
+	{
+		$pdf = new Pdf($this->fonts[array_key_first($this->fonts)][0]);
+		$pdf->setGreyscale($this->greyscale);
+		foreach ($this->fonts as $font) {
+			$pdf->addFont(...$font);
+		}
+
+		$scale = $documentWidth / $pdf->getSource()->GetPageWidth();
+		$pdf->setScale($scale);
+
+		return $pdf;
+	}
+
+	public function toPdf(string $content): Pdf
+	{
+		return $this->renderFromString($content);
+	}
+
+	protected function createElementImage(SimpleXMLElement $element): ImageElement
 	{
 		if (!$this->imagePath) {
 			throw new LogicException('Image path must be set for <image>.');
 		}
 
-		$x = $this->attrInt($element, 'x');
-		$y = $this->attrInt($element, 'y');
-		$width = $this->attrInt($element, 'width');
-		$height = $this->attrInt($element, 'height');
-		$src = $this->imagePath . '/' . ltrim($this->attrString($element, 'href'), './');
-
-		if (!file_exists($src)) {
-			throw new LogicException(sprintf('Image %s not exists.', $src));
-		}
-
-		$this->pdf->image($src, $x, $y, $width, $height);
+		return new ImageElement($element, $this->imagePath);
 	}
 
-	protected function elementSwitch(SimpleXMLElement $element): void
+	protected function createElementText(SimpleXMLElement $element): TextElement
 	{
-		foreach ($element as $el) {
-			$method = 'element' . ucfirst($el->getName());
-			if (!method_exists($this, $method)) {
-				continue;
-			}
-
-			$this->$method($el);
-		}
+		return new TextElement($element);
 	}
 
-	protected function elementText(SimpleXMLElement $element): void
+	protected function createElementRect(SimpleXMLElement $element): RectElement
 	{
-		$fontSize = $this->attrInt($element, 'font-size', required: true);
-		$x = $this->attrInt($element, 'x', required: true);
-		$y = $this->attrInt($element, 'y', required: true);
-		$color = $this->attrString($element, 'fill');
-		$width = $this->attrInt($element, 'data-pdf-width');
-		$lineHeight = $this->attrInt($element, 'data-pdf-lineHeight');
-		$border = $this->attrInt($element, 'data-pdf-border', 0, scale: false);
-
-		$this->pdf->text(
-			$x,
-			$y,
-			(string) $element,
-			$color ? Color::fromString($color) : null,
-			$this->attrString($element, 'text-anchor', 'start'),
-			null,
-			$this->attrString($element, 'font-weight', 'normal'),
-			$fontSize,
-			$width,
-			$lineHeight,
-			$border,
-		);
+		return new RectElement($element);
 	}
 
-	protected function elementRect(SimpleXMLElement $element): void
+	protected function createElementPolygon(SimpleXMLElement $element): PolygonElement
 	{
-		$x = $this->attrInt($element, 'x', required: true);
-		$y = $this->attrInt($element, 'y', required: true);
-		$width = $this->attrInt($element, 'width', required: true);
-		$height = $this->attrInt($element, 'height', required: true);
-		$fill = $this->attrString($element, 'fill');
-		$stroke = $this->attrString($element, 'stroke');
-
-		$this->pdf->rect(
-			$x,
-			$y,
-			$width,
-			$height,
-			$stroke ? Color::fromString($stroke) : null,
-			$fill ? Color::fromString($fill) : null,
-		);
-	}
-
-	protected function attrString(
-		SimpleXMLElement $element,
-		string $name,
-		?string $default = null,
-		bool $required = false
-	): ?string
-	{
-		$attrs = $element->attributes();
-		if (!$attrs) {
-			return null;
-		}
-		$value = $attrs[$name];
-		$value = $value === null ? null : (string) $value;
-
-		if ($value === null) {
-			if ($required) {
-				throw new LogicException(sprintf('Element %s must have attribute %s', $element->getName(), $name));
-			}
-
-			$value = $default;
-		}
-
-		return $value;
-	}
-
-	protected function attrInt(
-		SimpleXMLElement $element,
-		string $name,
-		?int $default = null,
-		bool $required = false,
-		bool $scale = true,
-	): ?int
-	{
-		$value = $this->attrString($element, $name, null, $required);
-
-		if ($value === null) {
-			return $default;
-		}
-
-		if (!$scale) {
-			return (int) $value;
-		}
-
-		return isset($this->scale) ? (int) round($value / $this->scale) : (int) $value;
-	}
-
-	private function purgeXml(string $content): string
-	{
-		// remove comments
-		$content = preg_replace('#<!--(.*?)-->#', '', $content);
-
-		// remove <style>
-		$content = preg_replace('#<style>(.*?)</style>#s', '', $content);
-
-		// &nbsp; -> space
-		return preg_replace('#&nbsp;#', ' ', $content);
+		return new PolygonElement($element);
 	}
 
 }
