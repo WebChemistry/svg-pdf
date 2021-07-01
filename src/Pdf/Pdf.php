@@ -19,6 +19,8 @@ final class Pdf
 
 	private float $adjustHeight;
 
+	private ?float $scale = null;
+
 	public function __construct(
 		private string $defaultFontFamily,
 		?Color $defaultTextColor = null,
@@ -32,6 +34,11 @@ final class Pdf
 		$this->defaultTextColor = $defaultTextColor ?? Color::black();
 
 		$this->updateLimitHeight();
+	}
+
+	public function setScale(?float $scale): void
+	{
+		$this->scale = $scale;
 	}
 
 	private function updateLimitHeight(): void
@@ -63,8 +70,15 @@ final class Pdf
 
 	public function rect(float $x, float $y, float $width, float $height, ?Color $stroke = null, ?Color $fill = null): void
 	{
-		$y = $this->adjustY($y);
-		
+		// scale
+		$x = $this->scale($x);
+		$y = $this->scale($y);
+		$width = $this->scale($width);
+		$height = $this->scale($height);
+		// end scale
+
+		$y = $this->adjustY($y, $height);
+
 		if ($this->greyscale) {
 			$stroke = $stroke?->greyscale();
 			$fill = $fill?->greyscale();
@@ -87,11 +101,62 @@ final class Pdf
 		$this->pdf->Rect($x, $y, $width, $height, $mode);
 	}
 
+	/**
+	 * @param array<int|float> $points
+	 */
+	public function polygon(array $points, ?Color $stroke = null, ?Color $fill = null): void
+	{
+		foreach ($points as $i => $point) {
+			$points[$i] = $this->scale($point);
+
+			if ($i % 2 === 1) {
+				$points[$i] = $this->adjustY($point);
+			}
+		}
+
+		if ($this->greyscale) {
+			$stroke = $stroke?->greyscale();
+			$fill = $fill?->greyscale();
+		}
+
+		$mode = match (true) {
+			$stroke && $fill => 'FD',
+			(bool) $fill => 'F',
+			default => '',
+		};
+
+		if ($stroke) {
+			$this->pdf->SetDrawColor($stroke->getRed(), $stroke->getGreen(), $stroke->getBlue());
+		}
+
+		if ($fill) {
+			$this->pdf->SetFillColor($fill->getRed(), $fill->getGreen(), $fill->getBlue());
+		}
+
+		$this->pdf->polygon($points, $mode);
+	}
+
 	public function image(string $file, float $x, float $y, float $width, float $height): void
 	{
 		$y = $this->adjustY($y);
 
 		$this->pdf->Image($file, $x, $y, $width, $height);
+	}
+
+	public function textWidth(
+		string $text,
+		float $fontSize = 0,
+		?string $fontFamily = null,
+		string $fontStyle = 'normal',
+	): float
+	{
+		$fontSize = $this->scale($fontSize);
+		$color ??= $this->defaultTextColor;
+		$fontFamily ??= $this->defaultFontFamily;
+
+		$this->pdf->SetFont($fontFamily, $fontStyle, $fontSize);
+
+		return $this->pdf->GetStringWidth($text);
 	}
 
 	public function text(
@@ -108,6 +173,14 @@ final class Pdf
 		int $border = 0,
 	): void
 	{
+		// scale
+		$x = $this->scale($x);
+		$y = $this->scale($y);
+		$fontSize = $this->scale($fontSize);
+		$width = $this->scale($width);
+		$lineHeight = $this->scale($lineHeight);
+		// end scale
+
 		$text = iconv('utf-8', 'cp1250//translit', $text);
 		$color ??= $this->defaultTextColor;
 		$fontFamily ??= $this->defaultFontFamily;
@@ -164,9 +237,9 @@ final class Pdf
 		return $this;
 	}
 
-	private function adjustY(float $y): ?float
+	private function adjustY(float $y, float $additional = 0): ?float
 	{
-		if ($y > $this->limitHeight) {
+		if (($y + $additional) > $this->limitHeight) {
 			$this->pdf->AddPage('P', 'A4');
 
 			$this->updateLimitHeight();
@@ -177,6 +250,23 @@ final class Pdf
 		}
 
 		return $y;
+	}
+
+	private function scale(float|int|null $value): ?int
+	{
+		if ($this->scale === null) {
+			return $value;
+		}
+
+		if ($value === null) {
+			return null;
+		}
+
+		if ($this->scale === 1) {
+			return $value;
+		}
+
+		return (int) round($value / $this->scale);
 	}
 
 }
