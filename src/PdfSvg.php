@@ -55,6 +55,10 @@ final class PdfSvg
 		foreach ($document->children() as $element) {
 			$name = strtolower($element->getName());
 
+			if (isset($element['requiredFeatures'])) {
+				continue;
+			}
+
 			$object = match($name) {
 				'text' => $this->createElementText($element),
 				'rect' => $this->createElementRect($element),
