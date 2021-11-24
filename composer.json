@@ -3,7 +3,7 @@
     "description": "Simple svg to pdf converter.",
     "require": {
         "php": ">=8.0",
-        "setasign/fpdf": "^1.8"
+        "setasign/fpdf": "^1.8.4"
     },
     "autoload": {
         "psr-4": {
